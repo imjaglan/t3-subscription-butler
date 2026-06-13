@@ -1,0 +1,92 @@
+/// subscription-butler WIT world — privacy-first subscription manager.
+///
+/// Imports required host capabilities:
+///   - tenant-context:         tenant DID (KV map naming), contract id,
+///                             calling-user DID, cluster timestamp, seq-no
+///   - logging:                info / debug / error lines (never secrets)
+///   - kv-store:               reads `z:<tid>:butler-secrets` for the billing
+///                             API secret, card token and billing base URL;
+///                             appends to `z:<tid>:butler-audit`
+///   - http:                   billing API list / cancel / charge calls
+///   - http-with-placeholders: charge with `{{profile.<field>}}` receipt
+///                             fields the host resolves from the calling
+///                             user's profile at dispatch time, so the
+///                             user's email/name never enter WASM memory
+///   - signing:                Keccak-256 + cluster secp256k1 signature over
+///                             every audit entry, produced inside the enclave
+///                             so the trail is offline-verifiable (see
+///                             `npm run verify-audit`)
+///
+/// The billing credential and card token are seeded into the
+/// `z:<tid>:butler-secrets` map by the tenant SDK before the contract runs.
+/// They are read inside the enclave only — the orchestrating agent never
+/// sees them.
+package z:subscription-butler@0.1.0;
+
+world subscription-butler {
+    import host:tenant/tenant-context@1.0.0;
+    import host:interfaces/logging@2.1.0;
+    import host:interfaces/kv-store@2.1.0;
+    import host:interfaces/http@2.1.0;
+    import host:interfaces/http-with-placeholders@2.1.0;
+    import host:interfaces/signing@2.1.0;
+
+    export contracts;
+}
+
+/// Identical world minus the `signing` import. Built with
+/// `cargo build --no-default-features` (drops the `enclave-signing` feature)
+/// for clusters that refuse to admit the signing capability for tenant
+/// contracts — audit entries then degrade to unsigned-with-reason.
+world subscription-butler-nosign {
+    import host:tenant/tenant-context@1.0.0;
+    import host:interfaces/logging@2.1.0;
+    import host:interfaces/kv-store@2.1.0;
+    import host:interfaces/http@2.1.0;
+    import host:interfaces/http-with-placeholders@2.1.0;
+
+    export contracts;
+}
+
+interface contracts {
+    /// Standard 3-field envelope used by all contracts callable from the node.
+    /// `input`        — JSON-serialized request payload specific to the function.
+    /// `user-profile` — always None for tenant contracts (hardcoded at dispatch).
+    /// `context`      — JSON-serialized DynamicContext (node-minted, trusted).
+    record generic-input {
+        input:        option<list<u8>>,
+        user-profile: option<list<u8>>,
+        context:      option<list<u8>>,
+    }
+
+    /// Fetch the live subscription list from the billing API and compute an
+    /// audit: dead-weight subscriptions, duplicate categories, budget overrun.
+    /// Input  (JSON, optional): { monthly_budget_cents?: u64 }
+    /// Output (JSON): AuditReport — see src/audit.rs
+    audit-subscriptions: func(req: generic-input) -> result<list<u8>, string>;
+
+    /// Cancel one subscription via the billing API. Idempotent server-side.
+    /// Input  (JSON): { subscription_id: string }
+    /// Output (JSON): { subscription_id, status, changed }
+    cancel-subscription: func(req: generic-input) -> result<list<u8>, string>;
+
+    /// Charge one subscription. The card token is read from the secrets map
+    /// inside the enclave. When `email_receipt_to_profile` is true the
+    /// receipt email/name are templated as `{{profile.*}}` markers resolved
+    /// by the host from the calling user's profile (requires a user-bound
+    /// call); the contract never holds the plaintext.
+    /// Input  (JSON): { subscription_id: string, idempotency_key: string,
+    ///                  email_receipt_to_profile?: bool }
+    /// Output (JSON): billing ChargeReceipt (no card token, masked fields only)
+    charge-subscription: func(req: generic-input) -> result<list<u8>, string>;
+
+    /// Read back the tamper-evident audit trail this contract wrote to the
+    /// `butler-audit` KV map (newest first). Entries written by contract
+    /// version >= 0.2.0 carry an enclave-produced secp256k1 signature over
+    /// the exact `payload` bytes (Keccak-256 hashed by the host) — verify
+    /// offline with `npm run verify-audit`.
+    /// Input  (JSON, optional): { limit?: u32 } (default 20, max 100)
+    /// Output (JSON): { entries: [{ seq, ts_secs, action, detail,
+    ///                  signed, payload?, sig?, sign_error? }] }
+    get-audit-log: func(req: generic-input) -> result<list<u8>, string>;
+}

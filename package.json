@@ -1,0 +1,38 @@
+{
+  "name": "subscription-butler",
+  "version": "0.1.0",
+  "description": "Privacy-first subscription manager agent on Terminal 3 Network",
+  "main": "index.js",
+  "scripts": {
+    "test": "tsx --test src/**/*.test.ts",
+    "hello": "tsx src/hello.ts",
+    "billing": "tsx src/billing/server.ts",
+    "deploy": "tsx src/ops/deploy.ts",
+    "grant": "tsx src/ops/grant.ts",
+    "agent:setup": "tsx src/ops/agent-setup.ts",
+    "chat": "tsx src/agent/chat.ts",
+    "web": "tsx src/web/server.ts",
+    "invoke": "tsx src/ops/invoke.ts",
+    "logs": "tsx src/ops/logs.ts",
+    "verify-audit": "tsx src/ops/verify-audit.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
+    "@hono/node-server": "^2.0.4",
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
+    "@terminal3/t3n-sdk": "^3.5.2",
+    "hono": "^4.12.25"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

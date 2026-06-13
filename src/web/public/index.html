@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Subscription Butler — sealed-secret agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="masthead">
+    <div class="masthead-title">
+      <span class="seal" aria-hidden="true"></span>
+      <h1>Subscription&nbsp;Butler</h1>
+      <span class="masthead-sub">acts on your money · never sees your secrets</span>
+    </div>
+    <dl class="masthead-meta" id="meta">
+      <div><dt>principal</dt><dd id="meta-principal">…</dd></div>
+      <div><dt>did</dt><dd id="meta-did" title="">…</dd></div>
+      <div><dt>contract</dt><dd id="meta-contract">…</dd></div>
+      <div><dt>brain</dt><dd id="meta-brain">…</dd></div>
+      <div><dt>link</dt><dd id="meta-link"><span class="dot dot-wait"></span> connecting</dd></div>
+    </dl>
+  </header>
+
+  <main class="stage">
+    <!-- ───────────── chat column ───────────── -->
+    <section class="chat-pane" aria-label="Chat with the Butler">
+      <div class="chat-log" id="chat-log" aria-live="polite"></div>
+
+      <form class="composer" id="composer">
+        <input
+          id="composer-input"
+          type="text"
+          autocomplete="off"
+          maxlength="4000"
+          placeholder='Try: "audit my subscriptions and cancel the dead weight"'
+          aria-label="Message the Butler"
+        />
+        <button type="submit" id="composer-send">Send</button>
+      </form>
+      <p class="composer-hint">
+        Mutating actions (cancel · charge) pause for your explicit approval — the agent cannot
+        spend without the button below.
+      </p>
+    </section>
+
+    <!-- ───────────── evidence rail ───────────── -->
+    <aside class="rail" aria-label="Enclave evidence">
+      <section class="card card-sealed">
+        <h2>Sealed in the enclave</h2>
+        <p class="card-blurb">
+          These live in the network's KV store and are injected into outbound requests
+          <em>inside</em> the TEE. The agent orchestrating this chat has never held them.
+        </p>
+        <ul class="sealed-list">
+          <li><span class="sealed-name">billing_api_secret</span><span class="redacted" aria-label="redacted">██████████████</span></li>
+          <li><span class="sealed-name">card_token</span><span class="redacted" aria-label="redacted">██████████████</span></li>
+          <li><span class="sealed-name">profile email</span><span class="redacted" aria-label="redacted">██████████████</span></li>
+        </ul>
+        <div class="proof-block">
+          <h3>…and what came back masked</h3>
+          <p class="proof-empty" id="proof-empty">No evidence yet — run a charge to see the
+            enclave-injected token echoed back masked.</p>
+          <ul class="proof-list" id="proof-list"></ul>
+        </div>
+      </section>
+
+      <section class="card card-audit">
+        <div class="card-head">
+          <h2>Enclave-signed audit trail</h2>
+          <button type="button" class="ghost-btn" id="audit-refresh">refresh</button>
+        </div>
+        <p class="card-blurb">
+          Every action is signed by the cluster key <em>inside</em> the enclave
+          (Keccak-256 + secp256k1) and re-verified offline by this page.
+        </p>
+        <p class="audit-status" id="audit-status">Loading…</p>
+        <ol class="audit-list" id="audit-list"></ol>
+      </section>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
