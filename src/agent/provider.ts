@@ -1,9 +1,11 @@
 import { DEFAULT_MODEL, type ButlerBrainOptions } from "./brain.js";
 import { OllamaMessagesClient, ollamaConfigFromEnv } from "./ollama.js";
+import { openaiConfigFromEnv } from "./openai.js";
 
 /**
  * Selects which LLM drives the chat brain, from LLM_PROVIDER:
  *   - "anthropic" (default) — Claude via ANTHROPIC_API_KEY; most reliable tool calling.
+ *   - "openai"              — OpenAI's hosted API (gpt-5 family) via OPENAI_API_KEY.
  *   - "ollama"              — a local model (e.g. Gemma); nothing leaves the machine.
  *
  * Resolved once at startup so misconfiguration fails fast, before any
@@ -27,6 +29,13 @@ export function resolveProvider(env: NodeJS.ProcessEnv = process.env): ResolvedP
         );
       }
       return { options: {}, label: `anthropic · ${DEFAULT_MODEL}` };
+    case "openai": {
+      const config = openaiConfigFromEnv(env);
+      return {
+        options: { client: new OllamaMessagesClient(config), model: config.model },
+        label: `openai · ${config.model} (reasoning: ${config.reasoningEffort})`,
+      };
+    }
     case "ollama": {
       const config = ollamaConfigFromEnv(env);
       return {
@@ -35,6 +44,6 @@ export function resolveProvider(env: NodeJS.ProcessEnv = process.env): ResolvedP
       };
     }
     default:
-      throw new Error(`LLM_PROVIDER must be "anthropic" or "ollama", got "${provider}".`);
+      throw new Error(`LLM_PROVIDER must be "anthropic", "openai", or "ollama", got "${provider}".`);
   }
 }

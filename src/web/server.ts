@@ -13,7 +13,7 @@ import { ChatSession } from "./session.js";
  *   WEB_PORT            port (default 8788)
  *   BUTLER_PRINCIPAL    "tenant" (default) or "agent" (delegated DID)
  *   CONFIRM_TIMEOUT_MS  unattended approve/deny auto-denies after this (default 300000)
- *   LLM_PROVIDER        "anthropic" (default) or "ollama" — same as the CLI
+ *   LLM_PROVIDER        "anthropic" (default), "openai", or "ollama" — same as the CLI
  *
  * SECURITY: binds to 127.0.0.1 ONLY. The app has no authentication — it
  * exposes a chat that can move (mock) money behind user confirms. Do not

@@ -358,6 +358,6 @@ describe("resolveProvider", () => {
   });
 
   it("rejects an unknown provider by name", () => {
-    assert.throws(() => resolveProvider({ LLM_PROVIDER: "openai" }), /LLM_PROVIDER.*got "openai"/);
+    assert.throws(() => resolveProvider({ LLM_PROVIDER: "gpt4all" }), /LLM_PROVIDER.*got "gpt4all"/);
   });
 });

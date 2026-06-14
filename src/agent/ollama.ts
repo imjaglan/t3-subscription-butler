@@ -24,6 +24,26 @@ export interface OllamaConfig {
   readonly timeoutMs: number;
   /** Pause before the single retry; overridable so tests don't sleep. */
   readonly retryDelayMs?: number;
+  /**
+   * Bearer token for hosted OpenAI-compatible APIs (e.g. OpenAI). Sent as
+   * `Authorization: Bearer <apiKey>`. Omitted for a local Ollama server, which
+   * needs no auth.
+   */
+  readonly apiKey?: string;
+  /**
+   * Which request field carries the output cap. Ollama and most local servers
+   * use `max_tokens`; OpenAI's GPT-5 family rejects that and requires
+   * `max_completion_tokens`. Defaults to `max_tokens`.
+   */
+  readonly tokenParam?: "max_tokens" | "max_completion_tokens";
+  /**
+   * Reasoning effort for OpenAI reasoning models (gpt-5 family). Lower effort is
+   * faster and cheaper and leaves more of the token budget for the answer.
+   * Sent only when set; local servers ignore it.
+   */
+  readonly reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  /** Provider name used in user-facing error messages. Defaults to "Ollama". */
+  readonly displayName?: string;
 }
 
 const DEFAULT_BASE_URL = "http://localhost:11434";
@@ -94,7 +114,9 @@ interface WireMessage {
 
 interface WireRequest {
   model: string;
-  max_tokens: number;
+  max_tokens?: number;
+  max_completion_tokens?: number;
+  reasoning_effort?: "minimal" | "low" | "medium" | "high";
   messages: WireMessage[];
   tools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>;
 }
@@ -110,6 +132,16 @@ export class OllamaMessagesClient implements MessagesClient {
     private readonly fetchFn: typeof fetch = fetch,
   ) {
     this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  }
+
+  /** Provider name for user-facing errors (e.g. "Ollama", "OpenAI"). */
+  private get providerName(): string {
+    return this.config.displayName ?? "Ollama";
+  }
+
+  /** Hosted APIs (OpenAI) carry an API key; local servers (Ollama) do not. */
+  private get isHosted(): boolean {
+    return Boolean(this.config.apiKey);
   }
 
   private async create(body: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> {
@@ -159,10 +191,15 @@ export class OllamaMessagesClient implements MessagesClient {
       };
     });
 
+    // GPT-5 rejects `max_tokens`; local servers expect it. Route the cap to the
+    // field this backend accepts.
+    const tokenParam = this.config.tokenParam ?? "max_tokens";
+
     return {
       model: this.config.model, // the brain's default model id is Anthropic-specific — always override
-      max_tokens: body.max_tokens,
+      [tokenParam]: body.max_tokens,
       messages,
+      ...(this.config.reasoningEffort ? { reasoning_effort: this.config.reasoningEffort } : {}),
       ...(tools.length ? { tools } : {}),
     };
   }
@@ -219,19 +256,26 @@ export class OllamaMessagesClient implements MessagesClient {
       try {
         res = await this.fetchFn(url, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            ...(this.config.apiKey ? { authorization: `Bearer ${this.config.apiKey}` } : {}),
+          },
           body: JSON.stringify(request),
           signal: controller.signal,
         });
       } catch (err) {
         if (controller.signal.aborted) {
+          const hint = this.isHosted
+            ? "check your network or raise the timeout"
+            : "local models can be slow on first load; raise OLLAMA_TIMEOUT_MS or use a smaller model";
           throw new OllamaError(
-            `Ollama request timed out after ${this.config.timeoutMs}ms — local models can be slow on first load; raise OLLAMA_TIMEOUT_MS or use a smaller model.`,
+            `${this.providerName} request timed out after ${this.config.timeoutMs}ms — ${hint}.`,
             false,
           );
         }
+        const reachHint = this.isHosted ? "check your network and base URL" : 'is "ollama serve" running?';
         throw new OllamaError(
-          `Cannot reach Ollama at ${this.config.baseUrl} — is "ollama serve" running? (${errMessage(err)})`,
+          `Cannot reach ${this.providerName} at ${this.config.baseUrl} — ${reachHint} (${errMessage(err)})`,
           true,
         );
       }
@@ -242,7 +286,7 @@ export class OllamaMessagesClient implements MessagesClient {
         return await res.json();
       } catch {
         // A half-written body is as transient as a 5xx — worth the one retry.
-        throw new OllamaError(`Ollama returned a non-JSON response (HTTP ${res.status}).`, true);
+        throw new OllamaError(`${this.providerName} returned a non-JSON response (HTTP ${res.status}).`, true);
       }
     } finally {
       clearTimeout(timer);
@@ -252,19 +296,28 @@ export class OllamaMessagesClient implements MessagesClient {
   private async httpError(res: Response): Promise<OllamaError> {
     const detail = await errorDetail(res);
     const suffix = detail ? ` — ${detail}` : "";
-    if (res.status === 404) {
+    if (res.status === 401 || res.status === 403) {
       return new OllamaError(
-        `Ollama returned 404 for model "${this.config.model}" — pull it with "ollama pull ${this.config.model}" or pick one from "ollama list"${suffix}`,
+        `${this.providerName} rejected the API key (HTTP ${res.status}) — check OPENAI_API_KEY${suffix}`,
+        false,
+      );
+    }
+    if (res.status === 404) {
+      const hint = this.isHosted
+        ? `set OPENAI_MODEL to a valid model id`
+        : `pull it with "ollama pull ${this.config.model}" or pick one from "ollama list"`;
+      return new OllamaError(
+        `${this.providerName} returned 404 for model "${this.config.model}" — ${hint}${suffix}`,
         false,
       );
     }
     if (res.status >= 500) {
-      return new OllamaError(`Ollama server error (HTTP ${res.status})${suffix}`, true);
+      return new OllamaError(`${this.providerName} server error (HTTP ${res.status})${suffix}`, true);
     }
     const toolHint = res.status === 400 && /tool/i.test(detail)
       ? ' (the model\'s template may not support tool calling — the Butler requires a tool-capable model)'
       : "";
-    return new OllamaError(`Ollama rejected the request (HTTP ${res.status})${suffix}${toolHint}`, false);
+    return new OllamaError(`${this.providerName} rejected the request (HTTP ${res.status})${suffix}${toolHint}`, false);
   }
 
   // ── OpenAI-compatible response → Anthropic.Message ────────────────────────
