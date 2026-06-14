@@ -13,7 +13,7 @@ A privacy-first agent on the **Terminal 3 Network (T3N)** that audits, cancels, 
 ![License](https://img.shields.io/badge/license-MIT-111827?style=for-the-badge)
 
 ![TEE contract](https://img.shields.io/badge/TEE_contract-Rust_to_WASM-DEA584?style=flat-square&logo=rust&logoColor=white)
-![Brain](https://img.shields.io/badge/Brain-Claude_Opus_4.8_or_local_Ollama-8B5CF6?style=flat-square&logo=anthropic&logoColor=white)
+![Brain](https://img.shields.io/badge/Brain-Claude_·_OpenAI_·_or_local_Ollama-8B5CF6?style=flat-square&logo=anthropic&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-123_passing-22C55E?style=flat-square)
 ![Flagship feature](https://img.shields.io/badge/uses-http--with--placeholders-F59E0B?style=flat-square)
 
@@ -24,7 +24,7 @@ A privacy-first agent on the **Terminal 3 Network (T3N)** that audits, cancels, 
 |  |  |
 |:--|:--|
 | 🔐 **Secret custody** | Card token + billing secret sealed inside an Intel TDX enclave — the agent never holds them. |
-| 🤖 **The brain** | Claude Opus 4.8 *or* a fully-local Ollama model, human-gated on every money action. |
+| 🤖 **The brain** | Swappable: Claude Opus 4.8, OpenAI gpt-5, *or* a fully-local Ollama model — human-gated on every money action. |
 | 🧾 **Audit** | Every action signed in-enclave (secp256k1) and verifiable offline — no trust in the transport. |
 | 🌐 **SDK depth** | 9 Terminal 3 primitives wired end-to-end on testnet. |
 
@@ -57,7 +57,7 @@ The card token and billing API secret live in the enclave KV map `z:<tid>:butler
 ```mermaid
 flowchart TD
     U["🧑 You<br/>natural-language request"]
-    B["🧠 Chat brain<br/>Claude Opus 4.8 · or fully-local Ollama"]
+    B["🧠 Chat brain<br/>Claude Opus 4.8 · OpenAI gpt-5-mini · or fully-local Ollama"]
     I["🔁 ButlerInvoker<br/>tenant · or delegated agent-DID"]
 
     U --> B
@@ -114,7 +114,7 @@ src/
   billing/                mock Stripe-like billing API (Hono) + tests
   ops/                    deploy / grant / invoke / logs / agent-setup / verify-audit CLIs
   agent/                  chat brain, tool surface, contract invoker,
-                          LLM provider selection (Anthropic / local Ollama)
+                          LLM provider selection (Anthropic / OpenAI / local Ollama)
   audit/                  offline signature verification of audit entries (noble keccak+secp256k1)
   web/                    one-page web UI: SSE chat, approve/deny gate, live verified audit panel
 ```
@@ -130,7 +130,7 @@ src/
 - Rust + the `wasm32-wasip2` target (`rustup target add wasm32-wasip2`) and `wasm-tools`
 - A tunnel tool (`ngrok` or `cloudflared`) so the enclave can reach the local billing API
 - A T3N developer API key from the [claim page](https://www.terminal3.io/claim-page)
-- (Optional, for the chat brain) an Anthropic API key — or [Ollama](https://ollama.com) serving a tool-calling-capable local model
+- (Optional, for the chat brain) an Anthropic API key, an OpenAI API key, or [Ollama](https://ollama.com) serving a tool-calling-capable local model
 
 </details>
 
@@ -168,13 +168,17 @@ npm run invoke -- get-audit-log
 npm run chat
 #   You: audit my subscriptions with a $50 budget and cancel the dead weight
 
-# 6b. …or chat with a fully LOCAL brain — no cloud LLM ever sees your data
+# 6b. …or chat with OpenAI (gpt-5 family; reliable tool calling)
+LLM_PROVIDER=openai OPENAI_API_KEY=... npm run chat    # defaults to gpt-5-mini; override with OPENAI_MODEL
+
+# 6c. …or chat with a fully LOCAL brain — no cloud LLM ever sees your data
 LLM_PROVIDER=ollama OLLAMA_MODEL=gemma4 npm run chat   # any tool-capable `ollama list` model
 
 # 7. …or the web UI: chat pane, approve/deny buttons for money actions,
 #    live audit trail with per-entry signature verification, and a
 #    "what the agent never saw" evidence panel. Binds to 127.0.0.1 ONLY.
 npm run web                                            # http://127.0.0.1:8788
+LLM_PROVIDER=openai OPENAI_API_KEY=... npm run web     # same, OpenAI gpt-5-mini brain
 LLM_PROVIDER=ollama OLLAMA_MODEL=gemma4 npm run web    # same, fully local brain
 
 # 8. verify the audit trail offline (keccak256 + secp256k1 against the
